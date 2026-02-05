@@ -1,0 +1,22 @@
+------------------------------------------------------------------------------------------------------------------------
+Sampling:
+------------------------------------------------------------------------------------------------------------------------
+Uniform Sampler:
+--> Takes the domain and used the random.uniform to create the data points in the domain.
+--> Dense and Continous
+--> Mostly used for Interior data
+
+Space Sampler:
+--> Works with the predefined set of points. Instead of picking anywhere in the range, it selects from a list of coordinates provided.
+--> Used random.choice
+--> Discrete and returns the points which exist in the Coordinates
+--> Mostly used for sampling from a specific mesh, a complex boundary shape, or experimental data points
+
+Time Sampler:
+--> It treats time as a continuous dimension but space as fixed set of points.
+--> Picks a random time (t) uniformly between two values and picks random location (x,y,z) from the spatial coords
+--> Concatenate both the time and spatial coordinates to create a (t,x,y,z) vector.
+--> Time is sampled continuously, space is sampled from fixed grid.
+--> Solves time-dependent PDEs to evaluate the physics at particular time.
+------------------------------------------------------------------------------------------------------------------------
+
