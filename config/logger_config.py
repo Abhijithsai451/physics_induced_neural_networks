@@ -1,49 +1,33 @@
 import logging
-from tabulate import tabulate
+import sys
+from logging.handlers import RotatingFileHandler
 
+def setup_logger(
+        name= "inference_wound_healing_pinns",
+        log_file="app_log.log",
+        level=logging.INFO,
+        max_bytes=10*1024*1024,
+        backup_count=5
+    ):
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
 
-def get_log_keys(log_dict):
-    key_list = []
-    for key in log_dict.keys():
-        if key.endswith("_loss"):
-            key_list.append(key)
-        elif key.endswith("_error"):
-            key_list.append(key)
-    return key_list
+    if not logger.handlers:
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(lineno)d - %(message)s')
 
-
-class Logger:
-    def __init___(self, name: str="main"):
-        self.logger = logging.getLogger(name)
-        self.logger.handlers.clear()
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
-        stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(formatter)
-        stream_handler.setLevel(logging.INFO)
-        self.logger.addHandler(stream_handler)
-        self.logger.propagate = False
-
-    def info(self,message):
-        self.logger.info(message)
-
-    def log_iter(self, step, start_time, end_time, log_dict):
-        log_keys = get_log_keys(log_dict)
-        log_list = [[key,"{:.3e}".format(log_dict[key])] for key in log_keys]
-
-        message = tabulate(
-            log_list,
-            headers=[
-                "Iter: {:3d}".format(step),
-                "Time: {:.3f}".format(end_time - start_time),
-            ],
-            tablefmt="simple",
-            numalign="right",
-            disable_numparse=True,
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding='utf-8'
         )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
-        header_length = len(message.split("\n")[0]) + 2
-        dashed_line = "-" * header_length
-        message = dashed_line + "\n" + message
+        # --- Stream Handler (Prints to console/stderr) ---
+        # We use sys.stderr for better compatibility with logging levels
+        stream_handler = logging.StreamHandler(sys.stderr)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
 
-        for line in message.split("\n"):
-            self.logger.info(line)
+    return logger

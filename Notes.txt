@@ -1,13 +1,16 @@
 ------------------------------------------------------------------------------------------------------------------------
 Sampling:
 ------------------------------------------------------------------------------------------------------------------------
+We are trying to implement the dynamic sampling using classes so we can create new tensors on the fly and act as
+regularization.
 Uniform Sampler:
 --> Takes the domain and used the random.uniform to create the data points in the domain.
---> Dense and Continous
+--> Dense and Continuous
 --> Mostly used for Interior data
 
 Space Sampler:
---> Works with the predefined set of points. Instead of picking anywhere in the range, it selects from a list of coordinates provided.
+--> Works with the predefined set of points. Instead of picking anywhere in the range, it selects from a list of
+    coordinates provided.
 --> Used random.choice
 --> Discrete and returns the points which exist in the Coordinates
 --> Mostly used for sampling from a specific mesh, a complex boundary shape, or experimental data points
