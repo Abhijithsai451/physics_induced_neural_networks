@@ -1,7 +1,8 @@
-from data_sampler import UniformDataSampler, SpaceDataSampler, TimeDataSampler
 from config.logger_config import setup_logger
 import torch
 import yaml
+
+from data_sampler import UniformDataSampler, SpaceDataSampler, TimeDataSampler
 
 logger = setup_logger()
 
@@ -16,78 +17,58 @@ def main():
 
     # Data Domain
     t_max = config['data']['t_max']
-    lx = config['data']['lx']
-    ly = config['data']['ly']
+    lx, ly = config['data']['lx'], config['data']['ly']
 
     # Dataset Size
-    n_inter = config['data_sizes']['n_int']
-    n_ic = config['data_sizes']['n_ic']
-    n_bc = config['data_sizes']['n_bc']
+    n_inter, n_ic, n_bc = config['data_size']['n_int'], config['data_size']['n_ic'], config['data_size']['n_bc']
 
 
-    # Sampling the Data Points for 1D
-    domain_1d = [[0.0, t_max],[0.0, lx]]
-    bc_spatial = [[0.0],[lx]]
+#%% Sampling the Data Points for 1D
+    print("--- 1D Processing ---")
+    time_bounds = [0.0, t_max]
+    spatial_bounds = [0.0,lx]
+    domain_1d = [time_bounds, spatial_bounds]
+    x = torch.linspace(0, lx, n_ic).view(-1,1)
+    ic_coords = torch.cat([torch.zeros_like(x), x], dim=1)
 
-    x_ic = torch.linspace(0, lx, n_ic).view(-1,1)
-    ic_coords = torch.cat([torch.zeros_like])
+    domain_sampler = UniformDataSampler(domain = domain_1d,num_points = n_inter,device = DEVICE)
+    ic_sampler = SpaceDataSampler(spatial_bound= ic_coords, num_points=n_ic, device=DEVICE)
+    bc_sampler = TimeDataSampler(spatial_bound = spatial_bounds, temporal_dom=time_bounds,  num_points = n_bc,
+                                 device=DEVICE)
 
-"""
-if cfg['physics']['type'] == "1d":
-        # Dom: [[t_min, t_max], [x_min, x_max]]
-        full_dom = [[0.0, t_max], [0.0, lx]]
-        # BC Spatial: Only two points (x=0 and x=lx)
-        bc_spatial = [[0.0], [lx]]
-        # IC Spatial: Points along x-axis at t=0
-        x_ic = torch.linspace(0, lx, cfg['data_sizes']['n_ic']).view(-1, 1)
-        ic_coords = torch.cat([torch.zeros_like(x_ic), x_ic], dim=1)
+    domain_1d = domain_sampler.sample()
+    ic_1d = ic_sampler.sample()
+    bc_1d = bc_sampler.sample()
 
-    else: # 2D Processing
-        ly = cfg['physics']['ly']
-        # Dom: [[t_min, t_max], [x_min, x_max], [y_min, y_max]]
-        full_dom = [[0.0, t_max], [0.0, lx], [0.0, ly]]
-        # BC Spatial: Corners/Edges of the square [x, y]
-        bc_spatial = [[0.0, 0.0], [lx, ly], [0.0, ly], [lx, 0.0]]
-        # IC Spatial: Grid on x-y plane at t=0
-        x = torch.linspace(0, lx, 25) # 25 * 24 = 600 points
-        y = torch.linspace(0, ly, 24)
-        gx, gy = torch.meshgrid(x, y, indexing='ij')
-        ic_coords = torch.stack([torch.zeros_like(gx), gx, gy], dim=-1).view(-1, 3)
+    print(f"Interior: {domain_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
+    print("1D processing is finished ")
 
-    # --- 2. Initialize Samplers ---
-    # Interior (N_INT)
-    sampler_int = UniformDataSampler(
-        dom=full_dom, 
-        batch_size=cfg['data_sizes']['n_int'], 
-        device=device
-    )
-    
-    # Initial Condition (N_IC)
-    sampler_ic = SpaceDataSampler(
-        coords=ic_coords, 
-        batch_size=cfg['data_sizes']['n_ic'], 
-        device=device
-    )
-    
-    # Boundary Condition (N_BC)
-    sampler_bc = TimeDataSampler(
-        spatial_coords=bc_spatial,
-        temporal_dom=[0.0, t_max],
-        batch_size=cfg['data_sizes']['n_bc'],
-        device=device
-    )
+ #%% 2D Data Samples
+    print("--- 2D Processing ---")
+    time_bounds = [0.0, t_max]
+    spatial_bounds_2d =  [[0.0, lx],[0.0, ly]]
+    domain_2d = [time_bounds] + spatial_bounds_2d
+    bc_spatial_2d = [[0.0, 0.0], [lx, 0.0], [0.0, ly], [lx, ly]]
+    print(domain_2d)
+    grid_size = int(n_ic ** 0.5)
 
-    # --- 3. Execution (Example for one training step) ---
-    X_INT = sampler_int.sample().requires_grad_(True)
-    X_IC  = sampler_ic.sample()
-    X_BC  = sampler_bc.sample()
+    x_2d = torch.linspace(0, lx, grid_size)
+    y_2d = torch.linspace(0, ly, grid_size)
+    gx, gy = torch.meshgrid(x_2d, y_2d, indexing="ij")
+    ic_coords_2d = torch.stack([torch.zeros_like(gx), gx, gy], dim=-1).view(-1, 3)
 
-    print(f"Mode: {cfg['physics']['type'].upper()}")
-    print(f"N_INT batch: {X_INT.shape}") # (N_INT, 2) for 1D, (N_INT, 3) for 2D
-    print(f"N_IC batch:  {X_IC.shape}")
-    print(f"N_BC batch:  {X_BC.shape}")
-"""
+    domain_sampler_2d = UniformDataSampler(domain = domain_2d,num_points = n_inter,device = DEVICE)
+    ic_sampler_2d = SpaceDataSampler(spatial_bound = spatial_bounds_2d, num_points=n_ic, device=DEVICE)
+    bc_sampler_2d = TimeDataSampler(spatial_bound=spatial_bounds_2d, temporal_dom=time_bounds, num_points=n_bc,
+                                    device=DEVICE)
 
+    domain_2d = domain_sampler_2d.sample()
+    ic_2d = ic_sampler_2d.sample()
+    bc_2d = bc_sampler_2d.sample()
+    print(f"Interior: {domain_2d.shape}, IC: {ic_2d.shape}, BC: {bc_2d.shape}")
+    print("2D processing is finished ")
+
+#%%
 
 
 if __name__ == "__main__":

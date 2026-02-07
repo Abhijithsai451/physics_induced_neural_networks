@@ -1,10 +1,10 @@
-datad:
+data:
   t_max: 2.0
   lx: 2.0
   ly: 2.0       # Used for implementing 2D
   alpha: 0.01
 
-datas_sizes:
+data_size:
     n_int: 1000
     n_ic: 600
     n_bc: 300
