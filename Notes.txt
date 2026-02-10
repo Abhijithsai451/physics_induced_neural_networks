@@ -1,5 +1,5 @@
 ------------------------------------------------------------------------------------------------------------------------
-Sampling:
+Data Sampling:
 ------------------------------------------------------------------------------------------------------------------------
 We are trying to implement the dynamic sampling using classes so we can create new tensors on the fly and act as
 regularization.
@@ -22,4 +22,31 @@ Time Sampler:
 --> Time is sampled continuously, space is sampled from fixed grid.
 --> Solves time-dependent PDEs to evaluate the physics at particular time.
 ------------------------------------------------------------------------------------------------------------------------
+Network Architecture:
+------------------------------------------------------------------------------------------------------------------------
+--> Need to implement an Neural Network architecture to build the PDEs and to solves them.
+--> We will use Multi-Layer Perceptron (MLP), DeepONet (Deep Operator Network)
+--> Input will be first projected into a higher dimensional feature space and then processed through dense layers.
+
+Multi-Layer Perceptron (MLP):
+--> Embeddings: These are optional. Used to implement the Fourier Embeddings or Periodic Embeddings.
+--> Input will be projected into series of Dense layers for Standard Linear Transformations each followed by the
+    activation functions for non linearity.
+--> Weight Factorization: This is a technique used for reparameterization which separates the weight's magnitude from its
+    directions to speed up the convergence.
+
+Modified MLP:
+--> Improved the MLP architecture with two encoder branches (u,v) from the input.
+--> In each hidden layer, the output is updated using a gating mechanism
+                    x =   x (*) u + (1-x) (*) v
+--> The use of encoder architecture helps the network to handle stiff gradients and complex non-linearities better than
+    a standard sequential MLP.
+
+Deep Operator Network (DeepONet):
+Advanced Architecture designed to learn operators rather than functions.
+--> BranchNet: Processes the input function u (Initial and the source terms)
+--> TrunkNet: Process the domain coordinates x
+--> Fusion: The outputs of the Branch and Trunk nets are combined using a pointwise product, followed by a final dense layer
+    to produce the solution.
+
 

@@ -3,6 +3,8 @@ import torch
 import yaml
 
 from data_sampler import UniformDataSampler, SpaceDataSampler, TimeDataSampler
+from network_architectures import DeepONet
+from trainer import Pinns_Trainer
 
 logger = setup_logger()
 
@@ -14,7 +16,7 @@ def main():
     config = load_config()
     DEVICE = torch.device(config['hardware']['device'] if torch.backends.mps.is_available() else "cpu")
     batch_size = config['training']['batch_size']
-
+    epochs = config['training']['epochs']
     # Data Domain
     t_max = config['data']['t_max']
     lx, ly = config['data']['lx'], config['data']['ly']
@@ -41,6 +43,14 @@ def main():
     bc_1d = bc_sampler.sample()
 
     print(f"Interior: {domain_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
+
+    model_1d = DeepONet(branch_in=100, trunk_in=2, hidden_dim=64, out_dim=1)
+    trainer = Pinns_Trainer(model_1d, config, DEVICE)
+
+    for epoch in range(epochs):
+        loss = trainer.pinns_trainer()
+
+
     print("1D processing is finished ")
 
  #%% 2D Data Samples
