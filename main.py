@@ -1,28 +1,30 @@
+from config.config_parser import get_args, Config
 from config.logger_config import setup_logger
 import torch
-import yaml
-
 from data_sampler import UniformDataSampler, SpaceDataSampler, TimeDataSampler
 from network_architectures import DeepONet
 from trainer import Pinns_Trainer
 
-logger = setup_logger()
-
-def load_config(path= "config.yaml"):
-    with open(path) as f:
-        return yaml.safe_load(f)
 
 def main():
-    config = load_config()
-    DEVICE = torch.device(config['hardware']['device'] if torch.backends.mps.is_available() else "cpu")
-    batch_size = config['training']['batch_size']
-    epochs = config['training']['epochs']
+    # Loading the Configuration file passed in Runtime.
+    config_path = get_args()
+    config = Config(config_path)
+
+    logger = setup_logger(config)
+    DEVICE = config.device if torch.backends.mps.is_available() else "cpu"
+
+    logger.info(f"Starting the Project: {config.project_name} ")
+    logger.info(f"Configuration Loaded from {config_path} ")
+
+    batch_size = config.training['batch_size']
+    epochs = config.training['epochs']
     # Data Domain
-    t_max = config['data']['t_max']
-    lx, ly = config['data']['lx'], config['data']['ly']
+    t_max = config.data['t_max']
+    lx, ly = config.data['lx'], config.data['ly']
 
     # Dataset Size
-    n_inter, n_ic, n_bc = config['data_size']['n_int'], config['data_size']['n_ic'], config['data_size']['n_bc']
+    n_inter, n_ic, n_bc = config.data_size['n_int'], config.data_size['n_ic'], config.data_size['n_bc']
 
 
 #%% Sampling the Data Points for 1D
@@ -42,16 +44,15 @@ def main():
     ic_1d = ic_sampler.sample()
     bc_1d = bc_sampler.sample()
 
-    print(f"Interior: {domain_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
+    logger.info(f"Interior: {domain_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
 
-    model_1d = DeepONet(branch_in=100, trunk_in=2, hidden_dim=64, out_dim=1)
-    trainer = Pinns_Trainer(model_1d, config, DEVICE)
+    model_1d = DeepONet(config).to(DEVICE)
 
-    for epoch in range(epochs):
-        loss = trainer.pinns_trainer()
+    logger.info(f"Initialized {config.model['arch_name']} with "
+          f"{config.model['num_trunk_layers']} trunk layers.")
 
 
-    print("1D processing is finished ")
+    logger.info("1D processing is finished ")
 
  #%% 2D Data Samples
     print("--- 2D Processing ---")
@@ -59,7 +60,7 @@ def main():
     spatial_bounds_2d =  [[0.0, lx],[0.0, ly]]
     domain_2d = [time_bounds] + spatial_bounds_2d
     bc_spatial_2d = [[0.0, 0.0], [lx, 0.0], [0.0, ly], [lx, ly]]
-    print(domain_2d)
+    logger.info(domain_2d)
     grid_size = int(n_ic ** 0.5)
 
     x_2d = torch.linspace(0, lx, grid_size)
@@ -75,8 +76,8 @@ def main():
     domain_2d = domain_sampler_2d.sample()
     ic_2d = ic_sampler_2d.sample()
     bc_2d = bc_sampler_2d.sample()
-    print(f"Interior: {domain_2d.shape}, IC: {ic_2d.shape}, BC: {bc_2d.shape}")
-    print("2D processing is finished ")
+    logger.info(f"Interior: {domain_2d.shape}, IC: {ic_2d.shape}, BC: {bc_2d.shape}")
+    logger.info("2D processing is finished ")
 
 #%%
 

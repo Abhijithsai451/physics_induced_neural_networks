@@ -1,0 +1,45 @@
+project_name: PINNS_Implementation
+logger:
+  log_dir: "results/logs"
+  tensorboard_dir: "results/runs"
+  ckpt_dir: "results/checkpoints"
+  use_tensorboard: false
+  save_every: 10
+  log_file: "training.log"
+  level: "INFO"
+data:
+  t_max: 2.0
+  lx: 2.0
+  ly: 2.0       # Used for implementing 2D
+  alpha: 0.01
+
+data_size:
+  n_int: 1000
+  n_ic: 600
+  n_bc: 300
+
+model:
+  arch_name: "DeepONet"
+  branch_in: 100
+  trunk_in: 2           # (t, x)
+  hidden_dim: 128
+  num_branches: 4
+  num_trunk_layers: 4
+  activation: "tanh"
+
+  periodicity:
+    axis_indices: [1]
+    period: [6.28]
+    trainable: [true]
+
+  fourier_emb:
+    embed_dim: 128
+    embed_scale: 10.0
+
+training:
+  batch_size : 256
+  learning_rate: 0.001
+  epochs: 10000
+
+
+device: "mps"

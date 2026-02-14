@@ -3,9 +3,10 @@ from torch import nn
 
 
 class FourierEmbeddings(nn.Module):
-    def __init__(self,in_features, embed_dim, embed_scale):
+    def __init__(self,config, in_features):
         super().__init__()
-        self.register_buffer("B", torch.randn(in_features, embed_dim//2)* embed_scale)
+        f_cfg = config.model['fourier_emb']
+        self.register_buffer("B", torch.randn(in_features, f_cfg['embed_dim'] // 2) * f_cfg['embed_scale'])
 
     def forward(self,x):
         proj = torch.matmul(x, self.B)
@@ -13,18 +14,22 @@ class FourierEmbeddings(nn.Module):
         return embeddings
 
 class PeriodicEmbeddings(nn.Module):
-    def __init__(self,axis_indices, periods):
+    def __init__(self,config):
         super().__init__()
-        self.axis_indices = axis_indices
-        self.periods = nn.Parameter(torch.tensor(periods, dtype=torch.float32))
+        p_cfg = config.model['periodicity']
 
+        self.axis_indices = p_cfg['axis_indices']
+        self.period_params = nn.ParameterList([
+            nn.Parameter(torch.tensor(float(p)), requires_grad=t)
+            for p,t in zip(p_cfg['period'], p_cfg['trainable'])
+        ])
     def forward(self,x):
         out = []
         period_idx = 0
         for i in range(x.shape[-1]):
             xi = x[:, i:i+1]
             if i in self.axis_indices:
-                p = self.periods[period_idx]
+                p = self.periods_params[self.axis_indices.index(i)]
                 out.append(torch.cos(p * xi))
                 out.append(torch.sin(p * xi))
                 period_idx += 1
@@ -66,34 +71,47 @@ class MLP(nn.Module):
 
 
 class DeepONet(nn.Module):
-    def __init__(self, branch_in, trunk_in, hidden_dim, out_dim):
+    def __init__(self, config):
         super().__init__()
-        # Branch Network: this network processess the input function (u)
-        self.branch = nn.Sequential(
-            nn.Linear(branch_in, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim),
-        )
+        m_cfg = config.model
+        self.activation = {"tanh":nn.Tanh(), "silu":nn.SiLU()}[m_cfg['activation']]
 
-        # Branch Network: Processes coordinates (x,t)
-        self.trunk = nn.Sequential(
-            nn.Linear(branch_in, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim),
-        )
+        # Trunk Preprocessing (Embeddings)
+        self.trunk_emb = nn.Sequential()
+        trunk_dim = m_cfg['trunk_in']
+        if 'periodicity' in m_cfg:
+            self.trunk_emb.add_module("periodicity", PeriodicEmbeddings(config))
+            trunk_dim += len(m_cfg['periodicity']['axis_indices'])
+
+        if 'fourier_emb' in m_cfg:
+            self.trunk_emb.add_module("fourier_emb", FourierEmbeddings(config, trunk_dim))
+            trunk_dim += m_cfg['fourier_emb']['embed_dim']
+
+        # Branch Netwwork
+        branch_layers = [nn.Linear(m_cfg['branch_in'], m_cfg['hidden_dim']), self.activation]
+        for _ in range(m_cfg['num_branches'] -1):
+            branch_layers.extend([nn.Linear(m_cfg['hidden_dim'], m_cfg['hidden_dim']), self.activation])
+        self.branch_net = nn.Sequential(*branch_layers)
+
+        self.encoder_u = nn.Linear(trunk_dim,m_cfg['hidden_dim'])
+        self.encoder_v = nn.Linear(trunk_dim,m_cfg['hidden_dim'])
+        self.trunk_layers = nn.ModuleList([
+            nn.Linear(m_cfg['hidden_dim'], m_cfg['hidden_dim'])
+            for _ in range(m_cfg['num_trunk_layers'])
+        ])
+
         self.b = nn.Parameter(torch.zeros(1))
-        self.final_layer = nn.Linear(hidden_dim, out_dim)
 
-    def forward(self,u_func, x_coord):
-        # 1. This processes the input using the respective networks.
-        B = self.branch(u_func)
-        T = self.trunk(x_coord)
+    def forward(self, u_func, x_coord):
+        x = self.trunk_emb(x_coord)
+        u_gate = self.activation(self.encoder_u(x))
+        v_gate = self.activation(self.encoder_v(x))
 
-        # 2. Pointwise Multiplication
-        combined = B * T
+        h_trunk = u_gate
+        for layer in self.trunk_layers:
+            z = self.activation(layer(h_trunk))
+            h_trunk = z * u_gate + (1-z) * v_gate
 
-        return self.final_linear(combined) + self.b
+        h_branch = self.branch_net(u_func)
+        output = torch.sum(h_branch * h_trunk, dim=-1, keepdim=True) + self.b
+        return output
