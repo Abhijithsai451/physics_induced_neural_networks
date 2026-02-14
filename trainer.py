@@ -1,44 +1,43 @@
 import torch
-import torch.nn as nn
-from utilities.training_device import get_device
+
+from losses import compute_pde_residual
+
+
 class Pinns_Trainer:
-    def __init__(self, model, lr = 1e-3):
+    def __init__(self, model, config):
         self.model = model
-        self.lr = lr
-        self.device = get_device()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-        self.criterion = nn.MSELoss()
+        self.device = config.device
 
-    def train_step(self, u_batch, y_batch, target_batch):
-        # Standard Supervised Training Step
+        self.alpha = config.data.get('alpha',0.01)
+        self.lr = config.training['learning_rate']
+        self.optimizer = config.training['optimizer']
+        self.criterion = config.training['criterion']
+
+    def train_step(self, u_branch, coords_int, coords_ic, coords_bc, u_ic_target):
         self.model.train()
         self.optimizer.zero_grad()
 
-        # Moving data to the device
-        u_batch = u_batch.to(self.device)
-        y_batch = y_batch.to(self.device)
-        target_batch = target_batch.to(self.device)
+        coords_int.requires_grad_(True)
+        u_pred = self.model(u_branch, coords_int)
 
-        preds = self.model(u_batch, y_batch)
-        loss = self.criterion(preds, target_batch)
+        # Calculating the PDE loss
+        residual = compute_pde_residual(self.model, u_branch, coords_int, self.alpha)
+        loss_pde = self.mean(residual**2)
 
-        loss.backward()
+        # Calculating IC and BC Losses
+        pred_ic = self.model(u_branch, coords_ic)
+        loss_ic = self.criterion(pred_ic, u_ic_target)
+        pred_bc = self.model(u_branch, coords_bc)
+        loss_bc = torch.mean(pred_bc**2)
+
+        # Backpropagation
+        total_loss = loss_pde + loss_ic + loss_bc
+        total_loss.backward()
         self.optimizer.step()
-        return loss.item()
-    def pinns_trainer(self, u_batch, y_batch, pde_fn):
-        # This is particularly used for the PINNS
-        self.model.train()
-        self.optimizer.zero_grad()
-
-        u_batch = u_batch.to(self.device)
-        y_batch = y_batch.to(self.device).requires_grad_(True)
-
-        residual = pde_fn(self.model, u_batch, y_batch)
-        loss = torch.mean(residual**2)
-
-        loss.backward()
-        self.optimizer.step()
-        return loss.item()
-
-    def save_checkpoint(self):
-        torch.save(self.model.state_dict(), './checkpoints/model.pth')
+        total_loss.item()
+        return {
+            "total": total_loss.item(),
+            "ic": loss_ic.item(),
+            "bc": loss_bc.item(),
+            "pde": loss_pde.item()
+        }

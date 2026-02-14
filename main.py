@@ -30,7 +30,7 @@ def main():
 #%% Sampling the Data Points for 1D
     print("--- 1D Processing ---")
     time_bounds = [0.0, t_max]
-    spatial_bounds = [0.0,lx]
+    spatial_bounds = [0.0, lx]
     domain_1d = [time_bounds, spatial_bounds]
     x = torch.linspace(0, lx, n_ic).view(-1,1)
     ic_coords = torch.cat([torch.zeros_like(x), x], dim=1)
@@ -44,6 +44,10 @@ def main():
     ic_1d = ic_sampler.sample()
     bc_1d = bc_sampler.sample()
 
+    n_sensors = config.model['branch_in']
+    sensor_coords = UniformDataSampler([[0.0, 0.0], spatial_bounds_1d], n_sensors, DEVICE).sample()
+    u_branch_1d = get_initial_condition_values(sensor_coords).T  # Shape: [1, n_sensors]
+
     logger.info(f"Interior: {domain_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
 
     model_1d = DeepONet(config).to(DEVICE)
@@ -51,6 +55,23 @@ def main():
     logger.info(f"Initialized {config.model['arch_name']} with "
           f"{config.model['num_trunk_layers']} trunk layers.")
 
+    trainer = Pinns_Trainer(model_1d, config)
+    for epoch in range(epochs):
+        interior_1d = domain_sampler_1d.sample()
+        ic_1d = ic_sampler_1d.sample()
+        bc_1d = bc_sampler_1d.sample()
+        u_ic_target_1d = get_initial_condition_values(ic_1d)
+
+        losses = trainer_1d.train_step(
+            u_branch=u_branch_1d,
+            interior_batch=interior_1d,
+            ic_batch=ic_1d,
+            bc_batch=bc_1d,
+            u_ic_target=u_ic_target_1d
+        )
+
+        if epoch % 500 == 0:
+            logger.info(f"1D Epoch {epoch} | Total Loss: {losses['total']:.6f} | PDE: {losses['pde']:.6f}")
 
     logger.info("1D processing is finished ")
 
