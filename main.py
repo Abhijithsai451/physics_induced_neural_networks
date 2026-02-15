@@ -1,7 +1,7 @@
 from config.config_parser import get_args, Config
 from config.logger_config import setup_logger
 import torch
-from data_sampler import UniformDataSampler, SpaceDataSampler, TimeDataSampler
+from data_sampler import UniformDataSampler, SpaceDataSampler, TimeDataSampler, get_initial_condition_values
 from network_architectures import DeepONet
 from trainer import Pinns_Trainer
 
@@ -19,59 +19,55 @@ def main():
 
     batch_size = config.training['batch_size']
     epochs = config.training['epochs']
+    epochs_2d = config.training['epochs_2d']
     # Data Domain
     t_max = config.data['t_max']
     lx, ly = config.data['lx'], config.data['ly']
-
     # Dataset Size
-    n_inter, n_ic, n_bc = config.data_size['n_int'], config.data_size['n_ic'], config.data_size['n_bc']
+    n_coll, n_ic, n_bc = config.data_size['n_int'], config.data_size['n_ic'], config.data_size['n_bc']
 
 
 #%% Sampling the Data Points for 1D
     print("--- 1D Processing ---")
     time_bounds = [0.0, t_max]
-    spatial_bounds = [0.0, lx]
-    domain_1d = [time_bounds, spatial_bounds]
-    x = torch.linspace(0, lx, n_ic).view(-1,1)
-    ic_coords = torch.cat([torch.zeros_like(x), x], dim=1)
+    spatial_bounds_1d = [0.0, lx]
+    domain_1d = [time_bounds, spatial_bounds_1d]
 
-    domain_sampler = UniformDataSampler(domain = domain_1d,num_points = n_inter,device = DEVICE)
-    ic_sampler = SpaceDataSampler(spatial_bound= ic_coords, num_points=n_ic, device=DEVICE)
-    bc_sampler = TimeDataSampler(spatial_bound = spatial_bounds, temporal_dom=time_bounds,  num_points = n_bc,
+    # Samplers
+    collocation_sampler = UniformDataSampler(domain = domain_1d,num_points = n_coll,device = DEVICE)
+    ic_sampler = UniformDataSampler(domain=[[0.0, 0.0], spatial_bounds_1d],num_points = n_bc,device = DEVICE)
+    bc_sampler = TimeDataSampler(spatial_bound = spatial_bounds_1d, temporal_dom=time_bounds,  num_points = n_bc,
                                  device=DEVICE)
 
-    domain_1d = domain_sampler.sample()
+    collocation_1d = collocation_sampler.sample()
     ic_1d = ic_sampler.sample()
     bc_1d = bc_sampler.sample()
 
-    n_sensors = config.model['branch_in']
-    sensor_coords = UniformDataSampler([[0.0, 0.0], spatial_bounds_1d], n_sensors, DEVICE).sample()
-    u_branch_1d = get_initial_condition_values(sensor_coords).T  # Shape: [1, n_sensors]
+    # Branch Inputs:
+    n_func_points = config.model['branch_in']
+    func_coords = UniformDataSampler([[0.0, 0.0], spatial_bounds_1d], n_func_points, DEVICE).sample()
+    initial_state_1d = get_initial_condition_values(func_coords).T  # Shape: [1, n_sensors]
 
-    logger.info(f"Interior: {domain_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
+    logger.info(f"Interior: {collocation_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
 
     model_1d = DeepONet(config).to(DEVICE)
 
     logger.info(f"Initialized {config.model['arch_name']} with "
           f"{config.model['num_trunk_layers']} trunk layers.")
 
-    trainer = Pinns_Trainer(model_1d, config)
+    trainer_1d = Pinns_Trainer(model_1d, config)
     for epoch in range(epochs):
-        interior_1d = domain_sampler_1d.sample()
-        ic_1d = ic_sampler_1d.sample()
-        bc_1d = bc_sampler_1d.sample()
-        u_ic_target_1d = get_initial_condition_values(ic_1d)
-
+        target_ic = get_initial_condition_values(ic_1d)
         losses = trainer_1d.train_step(
-            u_branch=u_branch_1d,
-            interior_batch=interior_1d,
-            ic_batch=ic_1d,
-            bc_batch=bc_1d,
-            u_ic_target=u_ic_target_1d
+            initial_state=initial_state_1d,
+            collocation_pts=collocation_1d ,
+            initial_pts=ic_1d,
+            boundary_pts=bc_1d,
+            initial_targets=target_ic
         )
 
-        if epoch % 500 == 0:
-            logger.info(f"1D Epoch {epoch} | Total Loss: {losses['total']:.6f} | PDE: {losses['pde']:.6f}")
+        if epoch % 20 == 0:
+            print(f"1D Epoch {epoch} | Total Loss: {losses['total']:.6f} | PDE: {losses['pde']:.6f} | IC: {losses['ic']:.6f} | BC: {losses['bc']:.6f}")
 
     logger.info("1D processing is finished ")
 
@@ -80,24 +76,36 @@ def main():
     time_bounds = [0.0, t_max]
     spatial_bounds_2d =  [[0.0, lx],[0.0, ly]]
     domain_2d = [time_bounds] + spatial_bounds_2d
-    bc_spatial_2d = [[0.0, 0.0], [lx, 0.0], [0.0, ly], [lx, ly]]
-    logger.info(domain_2d)
-    grid_size = int(n_ic ** 0.5)
 
-    x_2d = torch.linspace(0, lx, grid_size)
-    y_2d = torch.linspace(0, ly, grid_size)
-    gx, gy = torch.meshgrid(x_2d, y_2d, indexing="ij")
-    ic_coords_2d = torch.stack([torch.zeros_like(gx), gx, gy], dim=-1).view(-1, 3)
-
-    domain_sampler_2d = UniformDataSampler(domain = domain_2d,num_points = n_inter,device = DEVICE)
-    ic_sampler_2d = SpaceDataSampler(spatial_bound = spatial_bounds_2d, num_points=n_ic, device=DEVICE)
+    collocation_sampler_2d = UniformDataSampler(domain = domain_2d,num_points = n_coll,device = DEVICE)
+    ic_sampler_2d = UniformDataSampler(domain=[[0.0, 0.0]] + spatial_bounds_2d, num_points=n_ic, device=DEVICE)
     bc_sampler_2d = TimeDataSampler(spatial_bound=spatial_bounds_2d, temporal_dom=time_bounds, num_points=n_bc,
                                     device=DEVICE)
 
-    domain_2d = domain_sampler_2d.sample()
-    ic_2d = ic_sampler_2d.sample()
-    bc_2d = bc_sampler_2d.sample()
-    logger.info(f"Interior: {domain_2d.shape}, IC: {ic_2d.shape}, BC: {bc_2d.shape}")
+    collocation_2d = collocation_sampler.sample()
+    ic_2d = ic_sampler.sample()
+    bc_2d = bc_sampler.sample()
+
+    # 2D Branch Input
+    func_coords_2d = UniformDataSampler([[0.0, 0.0]] + spatial_bounds_2d, n_func_points, DEVICE).sample()
+    initial_state_2d = get_initial_condition_values(func_coords_2d).T
+
+    model_2d = DeepONet(config).to(DEVICE)
+    trainer_2d = Pinns_Trainer(model_2d, config)
+
+    for epoch in range(epochs_2d):
+        target_ic_2d = get_initial_condition_values(ic_2d)
+        losses = trainer_2d.train_step(
+            initial_state=initial_state_2d,
+            collocation_pts=collocation_2d,
+            initial_pts=ic_2d,
+            boundary_pts=bc_2d,
+            initial_targets=target_ic_2d
+        )
+        if epoch % 20 == 0:
+            print(
+                f"1D Epoch {epoch} | Total Loss: {losses['total']:.6f} | PDE: {losses['pde']:.6f} | IC: {losses['ic']:.6f} | BC: {losses['bc']:.6f}")
+
     logger.info("2D processing is finished ")
 
 #%%

@@ -39,7 +39,10 @@ model:
 training:
   batch_size : 256
   learning_rate: 0.001
-  epochs: 10000
+  epochs: 1000
+  epochs_2d: 1000
+  optimizer: "adam"
+  criterion:
 
 
 device: "mps"

@@ -29,7 +29,7 @@ class PeriodicEmbeddings(nn.Module):
         for i in range(x.shape[-1]):
             xi = x[:, i:i+1]
             if i in self.axis_indices:
-                p = self.periods_params[self.axis_indices.index(i)]
+                p = self.period_params[self.axis_indices.index(i)]
                 out.append(torch.cos(p * xi))
                 out.append(torch.sin(p * xi))
                 period_idx += 1
@@ -85,7 +85,7 @@ class DeepONet(nn.Module):
 
         if 'fourier_emb' in m_cfg:
             self.trunk_emb.add_module("fourier_emb", FourierEmbeddings(config, trunk_dim))
-            trunk_dim += m_cfg['fourier_emb']['embed_dim']
+            trunk_dim = m_cfg['fourier_emb']['embed_dim']
 
         # Branch Netwwork
         branch_layers = [nn.Linear(m_cfg['branch_in'], m_cfg['hidden_dim']), self.activation]
