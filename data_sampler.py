@@ -69,5 +69,10 @@ class TimeDataSampler(BaseDataSampler):
         vector = torch.cat((t,x),dim = 1)
         return vector
 
-
+def get_initial_condition_values(coords):
+    """Calculates the scalar values for the initial wound shape."""
+    spatial = coords[:, 1:] # Ignore time dimension
+    # Gaussian shape: centered at middle, width adjusted
+    dist_sq = torch.sum((spatial - 1.0)**2, dim=1, keepdim=True)
+    return torch.exp(-5.0 * dist_sq)
 
