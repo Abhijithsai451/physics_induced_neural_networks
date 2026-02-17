@@ -4,6 +4,8 @@ import torch
 from data_sampler import UniformDataSampler, SpaceDataSampler, TimeDataSampler, get_initial_condition_values
 from network_architectures import DeepONet
 from trainer import Pinns_Trainer
+from utilities.visualize import visualize_points_1d, visualize_solution_1d, visualize_points_2d, visualize_solution_2d, \
+    visualize_loss
 
 
 def main():
@@ -49,9 +51,14 @@ def main():
     initial_state_1d = get_initial_condition_values(func_coords).T  # Shape: [1, n_sensors]
 
     logger.info(f"Interior: {collocation_1d.shape}, IC: {ic_1d.shape}, BC: {bc_1d.shape}")
+    logger.info("Visualizing the Data Samples")
+    visualize_points_1d(domain_points=collocation_1d[:, 1:],
+        boundary_points=bc_1d[:, 1:],
+        bounds=[spatial_bounds_1d],
+        title="1D Collocation and Boundary Points"
+    )
 
     model_1d = DeepONet(config).to(DEVICE)
-
     logger.info(f"Initialized {config.model['arch_name']} with "
           f"{config.model['num_trunk_layers']} trunk layers.")
 
@@ -66,9 +73,13 @@ def main():
             initial_targets=target_ic
         )
 
-        if epoch % 20 == 0:
+        if epoch % 50 == 0:
             print(f"1D Epoch {epoch} | Total Loss: {losses['total']:.6f} | PDE: {losses['pde']:.6f} | IC: {losses['ic']:.6f} | BC: {losses['bc']:.6f}")
 
+    # visualizing the solution in 1d
+    visualize_solution_1d(model=model_1d,initial_state=initial_state_1d, domain_bound=lx,t_test=t_max * 0.5)
+    # visualizing the loss
+    visualize_loss(trainer_1d, title="1D Loss Curve")
     logger.info("1D processing is finished ")
 
  #%% 2D Data Samples
@@ -82,13 +93,19 @@ def main():
     bc_sampler_2d = TimeDataSampler(spatial_bound=spatial_bounds_2d, temporal_dom=time_bounds, num_points=n_bc,
                                     device=DEVICE)
 
-    collocation_2d = collocation_sampler.sample()
-    ic_2d = ic_sampler.sample()
-    bc_2d = bc_sampler.sample()
+    collocation_2d = collocation_sampler_2d.sample()
+    ic_2d = ic_sampler_2d.sample()
+    bc_2d = bc_sampler_2d.sample()
 
     # 2D Branch Input
     func_coords_2d = UniformDataSampler([[0.0, 0.0]] + spatial_bounds_2d, n_func_points, DEVICE).sample()
     initial_state_2d = get_initial_condition_values(func_coords_2d).T
+
+    # Visualizing the points in 2D
+    visualize_points_2d(domain_points=func_coords_2d[:, 1:],
+                        boundary_points=bc_2d[:, 1:],
+                        bounds=spatial_bounds_2d,
+                        title="2D Collocation and Boundary Points")
 
     model_2d = DeepONet(config).to(DEVICE)
     trainer_2d = Pinns_Trainer(model_2d, config)
@@ -102,9 +119,15 @@ def main():
             boundary_pts=bc_2d,
             initial_targets=target_ic_2d
         )
-        if epoch % 20 == 0:
+        if epoch % 50 == 0:
             print(
                 f"1D Epoch {epoch} | Total Loss: {losses['total']:.6f} | PDE: {losses['pde']:.6f} | IC: {losses['ic']:.6f} | BC: {losses['bc']:.6f}")
+
+    # visualizing the solution in 2d
+    visualize_solution_2d(model=model_2d, bounds=spatial_bounds_2d, t_max=t_max, num_frames=100)
+
+    # visualizing the loss
+    visualize_loss(trainer_2d, title="2D Loss Curve")
 
     logger.info("2D processing is finished ")
 

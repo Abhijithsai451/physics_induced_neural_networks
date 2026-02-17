@@ -13,13 +13,15 @@ class Pinns_Trainer:
         self.lr = config.training['learning_rate']
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr = config.training['learning_rate'])
         self.criterion = nn.MSELoss()
-
+        self.total_loss = []
+        self.loss_pde = []
+        self.loss_ic = []
+        self.loss_bc = []
     def train_step(self, initial_state, collocation_pts, initial_pts, boundary_pts, initial_targets):
         self.model.train()
         self.optimizer.zero_grad()
 
         collocation_pts.requires_grad_(True)
-        u_pred = self.model(initial_state, collocation_pts)
 
         # Calculating the PDE loss
         residual = compute_pde_residual(self.model, initial_state, collocation_pts, self.alpha)
@@ -35,7 +37,12 @@ class Pinns_Trainer:
         total_loss = loss_pde + loss_ic + loss_bc
         total_loss.backward()
         self.optimizer.step()
-        total_loss.item()
+
+        self.total_loss.append(total_loss.item())
+        self.loss_pde.append(loss_pde.item())
+        self.loss_ic.append(loss_ic.item())
+        self.loss_bc.append(loss_bc.item())
+
         return {
             "total": total_loss.item(),
             "ic": loss_ic.item(),

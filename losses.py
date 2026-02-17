@@ -2,6 +2,10 @@ import torch
 
 def compute_pde_residual(model, u_branch, coords, alpha = 0.01):
     # Forward Pass
+
+    if coords.shape[1] == 4:
+        coords = coords[:,:3]
+
     u = model(u_branch, coords)
 
     # First Derivation
